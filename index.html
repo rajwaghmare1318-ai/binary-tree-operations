@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Binary Tree — Slide-style Animation & Interactive Operations (Updated)</title>
+<style>
+  :root{
+    --bg:#fbfcfe;
+    --panel:#ffffff;
+    --muted:#6b7280;
+    --accent:#2563eb; /* blue */
+    --node:#0ea5a4;   /* teal */
+    --node-text:#ffffff;
+    --edge:#334155;
+    --highlight:#f97316; /* orange */
+    --done:#16a34a; /* green */
+    --ui-ghost:#f1f5f9;
+  }
+  html,body { height:100%; margin:0; font-family:Inter,system-ui,Arial; background:var(--bg); color:#0f172a;}
+  .app {
+    display:flex; flex-direction:column; height:100vh;
+  }
+  header {
+    display:flex; align-items:center; gap:12px; padding:14px 18px; background:var(--panel); box-shadow:0 1px 0 rgba(15,23,42,0.04);
+  }
+  header h1 { font-size:16px; margin:0; }
+  .controls { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .controls input[type="text"]{ padding:8px 10px; border-radius:8px; border:1px solid #e6edf3; width:120px; }
+  button { padding:8px 10px; border-radius:8px; border:0; cursor:pointer; background:var(--accent); color:white; font-weight:600; }
+  button.ghost { background:var(--ui-ghost); color:#0f172a; border:1px solid #e6edf3; }
+  button.small { padding:6px 8px; font-size:13px; }
+  main { display:flex; flex:1; gap:12px; padding:12px; box-sizing:border-box; }
+  #canvasWrap { flex:1; background:var(--panel); border-radius:12px; padding:8px; display:flex; flex-direction:column; }
+  #canvasToolbar { display:flex; align-items:center; gap:8px; padding:6px 4px; }
+  #stage { flex:1; border-radius:8px; background:linear-gradient(180deg,#ffffff, #fbfdff); box-shadow:inset 0 1px 0 rgba(15,23,42,0.03); position:relative; overflow:hidden; }
+  canvas { width:100%; height:100%; display:block; }
+  aside { width:340px; background:var(--panel); border-radius:12px; padding:12px; box-shadow:0 1px 0 rgba(15,23,42,0.04); }
+  .panel { margin-bottom:12px; }
+  .panel h3 { margin:6px 0; font-size:14px; }
+  .small { font-size:13px; color:var(--muted); }
+  .playbar { display:flex; gap:8px; align-items:center; flex:1; padding:6px 8px; background:#f8fafc; border-radius:8px; border:1px solid #eef2ff; }
+  .slider { width:260px; }
+  .caption { font-size:13px; color:#0f172a; min-width:280px; }
+  .statusbox { margin-top:8px; font-size:13px; color:var(--muted); }
+  .stat { display:flex; justify-content:space-between; padding:6px 8px; border-radius:8px; background:#f8fafc; margin-top:6px; }
+  .ops { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  /* New visible operation buttons: white background with colored border & text */
+  .ops button {
+    background: #fff;
+    color: var(--muted);
+    border: 2px solid #e6edf3;
+    padding:8px 10px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .ops button[data-color="height"] { border-color:#f97316; color:#f97316; }
+  .ops button[data-color="count"]  { border-color:#2563eb; color:#2563eb; }
+  .ops button[data-color="leaves"] { border-color:#16a34a; color:#16a34a; }
+  .ops button[data-color="degree"] { border-color:#7c3aed; color:#7c3aed; }
+  /* top small operation shortcuts (left of stage) — neutral for visibility */
+  .topOps button { background:#fff; border:1px solid #e6edf3; color:#0f172a; padding:6px 8px; border-radius:8px; font-weight:600; }
+  footer { padding:8px 12px; text-align:center; color:var(--muted); font-size:13px; }
+  /* live counter style */
+  #liveCounter { font-weight:700; color:#0f172a; }
+  #overlayNote { pointer-events:none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Binary Tree — Slide-style Animation</h1>
+    <div class="controls">
+      <input id="nodeVal" placeholder="Node label (e.g. 50)" type="text" />
+      <button id="addRoot">Add Root</button>
+      <button id="addLeft" class="ghost small">Add Left</button>
+      <button id="addRight" class="ghost small">Add Right</button>
+      <button id="deleteNode" class="ghost small">Delete</button>
+      <button id="demo" class="ghost small">Autoplay Demo</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="canvasWrap">
+      <div id="canvasToolbar" style="gap:12px;">
+        <div class="playbar">
+          <button id="playPause" class="small">▶ Play</button>
+          <button id="stepBack" class="small ghost">⟲</button>
+          <button id="stepFwd" class="small ghost">⟳</button>
+          <input id="slideSlider" class="slider" type="range" min="0" max="7" value="0" />
+          <div class="caption" id="slideCaption">Slide 0 — empty</div>
+        </div>
+        <div class="topOps" style="display:flex;gap:8px;">
+          <button id="heightOp" class="small" title="Height (shortcut)">Height</button>
+          <button id="countOp" class="small" title="Count (shortcut)">Count</button>
+          <button id="leafOp" class="small" title="Leaves (shortcut)">Leaves</button>
+          <button id="degreeOp" class="small" title="Degree (shortcut)">Degree</button>
+        </div>
+      </div>
+
+      <div id="stage">
+        <canvas id="treeCanvas"></canvas>
+        <div id="overlayNote" style="position:absolute; left:14px; top:14px; padding:8px 12px; background:rgba(2,6,23,0.7); color:white; border-radius:8px; font-size:13px; display:none;"></div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h3>Selected Node</h3>
+        <div id="selectedInfo" class="small">None</div>
+        <div class="statusbox small">Click a node to select it. Drag to reposition. Use Add Left/Right to attach children to the selected node.</div>
+      </div>
+
+      <div class="panel">
+        <h3>Operations (animated)</h3>
+        <div class="stat"><div class="small">Live</div><div id="liveCounter">—</div></div>
+        <div class="ops">
+          <button id="simulateHeight" data-color="height">Animate Height</button>
+          <button id="simulateCount" data-color="count">Animate Count</button>
+          <button id="simulateLeaves" data-color="leaves">Animate Leaf Count</button>
+          <button id="simulateDegree" data-color="degree">Animate Degree</button>
+        </div>
+        <div class="small" style="margin-top:8px;">Live counter updates while animation runs. Nodes highlight orange while processing and green when done.</div>
+      </div>
+
+      <div class="panel">
+        <h3>Slides (Demo)</h3>
+        <div class="small">Demo builds this tree in 7 slides:</div>
+        <ol class="small" style="margin-left:14px; margin-top:6px;">
+          <li>Slide 1 — root 50</li>
+          <li>Slide 2 — add 30 (left of 50)</li>
+          <li>Slide 3 — add 70 (right of 50)</li>
+          <li>Slide 4 — add 20 (left of 30)</li>
+          <li>Slide 5 — add 40 (right of 30)</li>
+          <li>Slide 6 — add 60 (left of 70)</li>
+          <li>Slide 7 — add 80 (right of 70)</li>
+        </ol>
+      </div>
+
+      <div class="panel">
+        <h3>Tips</h3>
+        <div class="small">Rename file to <code>index.html</code> and upload to GitHub repo root for Pages. Use Play to auto-run slides, or step through manually.</div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>Interactive binary tree demo — updated UI for better visibility</footer>
+</div>
+
+<script>
+/* Same interactive tree & slides as before, with updated button colors and live counter. */
+
+// Canvas setup
+const canvas = document.getElementById('treeCanvas');
+const ctx = canvas.getContext('2d');
+function fitCanvas(){ canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
+window.addEventListener('resize', ()=>{ fitCanvas(); });
+fitCanvas();
+
+// Node & Tree classes
+class TNode {
+  constructor(label){
+    this.label = String(label);
+    this.left = null;
+    this.right = null;
+    this.x = 0; this.y = 0;
+    this.tx = 0; this.ty = 0;
+    this.radius = 22;
+    this._color = null;
+  }
+}
+class Tree {
+  constructor(){ this.root = null; }
+  addRoot(lbl){ if(!this.root) this.root = new TNode(lbl); return this.root; }
+  findByLabel(lbl, node=this.root){
+    if(!node) return null;
+    if(node.label === String(lbl)) return node;
+    return this.findByLabel(lbl, node.left) || this.findByLabel(lbl, node.right);
+  }
+  findParent(target, node=this.root, parent=null){
+    if(!node) return null;
+    if(node === target) return parent;
+    return this.findParent(target, node.left, node) || this.findParent(target, node.right, node);
+  }
+}
+const tree = new Tree();
+
+let selected = null, dragging = null, dragOffset = {x:0,y:0};
+
+const layout = {
+  rootX: () => canvas.width/2,
+  rootY: 80,
+  spread: () => Math.max(80, canvas.width/6),
+  yStep: 90,
+  smooth: 0.18
+};
+
+const slides = [
+  {type:'root', label: '50', caption:'Slide 1 — Only node 50 (root).'},
+  {type:'add', label: '30', parent:'50', caption:'Slide 2 — Add 30 as left child of 50.'},
+  {type:'add', label: '70', parent:'50', caption:'Slide 3 — Add 70 as right child of 50.'},
+  {type:'add', label: '20', parent:'30', caption:'Slide 4 — Add 20 as left child of 30.'},
+  {type:'add', label: '40', parent:'30', caption:'Slide 5 — Add 40 as right child of 30.'},
+  {type:'add', label: '60', parent:'70', caption:'Slide 6 — Add 60 as left child of 70.'},
+  {type:'add', label: '80', parent:'70', caption:'Slide 7 — Add 80 as right child of 70.'}
+];
+
+let playing = false;
+let currentSlide = 0;
+const maxSlide = slides.length;
+const playInterval = 1100;
+let playTimer = null;
+
+const nodeValInput = document.getElementById('nodeVal');
+const addRootBtn = document.getElementById('addRoot');
+const addLeftBtn = document.getElementById('addLeft');
+const addRightBtn = document.getElementById('addRight');
+const deleteBtn = document.getElementById('deleteNode');
+const demoBtn = document.getElementById('demo');
+const playPauseBtn = document.getElementById('playPause');
+const stepBackBtn = document.getElementById('stepBack');
+const stepFwdBtn = document.getElementById('stepFwd');
+const slideSlider = document.getElementById('slideSlider');
+const slideCaption = document.getElementById('slideCaption');
+const overlayNote = document.getElementById('overlayNote');
+
+const heightOpBtn = document.getElementById('heightOp');
+const countOpBtn  = document.getElementById('countOp');
+const leafOpBtn   = document.getElementById('leafOp');
+const degreeOpBtn = document.getElementById('degreeOp');
+
+const simHeightBtn = document.getElementById('simulateHeight');
+const simCountBtn  = document.getElementById('simulateCount');
+const simLeavesBtn = document.getElementById('simulateLeaves');
+const simDegreeBtn = document.getElementById('simulateDegree');
+
+const liveCounter = document.getElementById('liveCounter');
+
+slideSlider.max = maxSlide;
+slideSlider.value = 0;
+
+function computeLayout(node, x, y, spread){
+  if(!node) return;
+  node.tx = x; node.ty = y;
+  if(node.left) computeLayout(node.left, x - spread, y + layout.yStep, spread/1.8);
+  if(node.right) computeLayout(node.right, x + spread, y + layout.yStep, spread/1.8);
+}
+
+function stepPositions(){
+  const smooth = layout.smooth;
+  function apply(node){
+    if(!node) return;
+    node.x += (node.tx - node.x) * smooth;
+    node.y += (node.ty - node.y) * smooth;
+    apply(node.left); apply(node.right);
+  }
+  apply(tree.root);
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  function drawEdge(a,b){
+    if(!a || !b) return;
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--edge') || '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    const cx = (a.x + b.x)/2;
+    const cy = (a.y + b.y)/2 - 10;
+    ctx.quadraticCurveTo(cx, cy, b.x, b.y);
+    ctx.stroke();
+  }
+  function drawNode(node){
+    if(!node) return;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, node.radius, 0, Math.PI*2);
+    const col = node._color || getComputedStyle(document.documentElement).getPropertyValue('--node') || '#0ea5a4';
+    ctx.fillStyle = col;
+    ctx.fill();
+    ctx.strokeStyle = '#0f172a22';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if(node === selected){
+      ctx.lineWidth = 3; ctx.strokeStyle = '#ef4444aa';
+      ctx.beginPath(); ctx.arc(node.x, node.y, node.radius+4, 0, Math.PI*2); ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--node-text') || '#fff';
+    ctx.font = 'bold 14px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(node.label), node.x, node.y);
+  }
+  function traverse(node){
+    if(!node) return;
+    if(node.left) drawEdge(node, node.left);
+    if(node.right) drawEdge(node, node.right);
+    if(node.left) traverse(node.left);
+    if(node.right) traverse(node.right);
+    drawNode(node);
+  }
+  traverse(tree.root);
+}
+
+function layoutAndRender(){
+  if(tree.root) computeLayout(tree.root, layout.rootX(), layout.rootY, layout.spread());
+  stepPositions();
+  draw();
+  requestAnimationFrame(layoutAndRender);
+}
+layoutAndRender();
+
+// interaction
+function hitTest(x,y,node){
+  if(!node) return null;
+  const dx = x - node.x, dy = y - node.y;
+  if(Math.sqrt(dx*dx + dy*dy) <= node.radius + 4) return node;
+  return hitTest(x,y,node.left) || hitTest(x,y,node.right);
+}
+canvas.addEventListener('mousedown', (ev)=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  const node = hitTest(x,y, tree.root);
+  if(node){
+    selected = node;
+    dragging = node;
+    dragOffset.x = x - node.x;
+    dragOffset.y = y - node.y;
+  } else {
+    selected = null;
+  }
+  updateSelectedInfo();
+});
+canvas.addEventListener('mousemove', (ev)=>{
+  if(!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  dragging.x = x - dragOffset.x; dragging.y = y - dragOffset.y;
+  dragging.tx = dragging.x; dragging.ty = dragging.y;
+});
+canvas.addEventListener('mouseup', ()=>{ dragging = null; });
+canvas.addEventListener('mouseleave', ()=>{ dragging = null; });
+
+function updateSelectedInfo(){
+  const el = document.getElementById('selectedInfo');
+  if(!selected) { el.innerHTML = 'None'; return; }
+  const parent = tree.findParent(selected);
+  el.innerHTML = `<div><b>Label:</b> ${selected.label}</div>
+    <div style="margin-top:6px;"><b>Left:</b> ${selected.left ? selected.left.label : '—'}, <b>Right:</b> ${selected.right ? selected.right.label : '—'}</div>
+    <div style="margin-top:6px;"><b>Parent:</b> ${parent ? parent.label : 'Root'}</div>`;
+}
+
+// add/delete
+addRootBtn.addEventListener('click', ()=>{
+  const v = nodeValInput.value.trim() || 'R';
+  if(tree.root){ alert('Root already exists. Delete first to create a new root.'); return; }
+  const n = tree.addRoot(v);
+  n.x = layout.rootX(); n.y = layout.rootY(); n.tx = n.x; n.ty = n.y;
+  selected = n; updateSelectedInfo();
+});
+addLeftBtn.addEventListener('click', ()=>{
+  if(!selected) return alert('Select a parent node first.');
+  if(selected.left) return alert('Left child already exists.');
+  const v = nodeValInput.value.trim() || 'N';
+  const child = new TNode(v);
+  child.x = selected.x - layout.spread()*0.6; child.y = selected.y + layout.yStep;
+  selected.left = child; updateSelectedInfo();
+});
+addRightBtn.addEventListener('click', ()=>{
+  if(!selected) return alert('Select a parent node first.');
+  if(selected.right) return alert('Right child already exists.');
+  const v = nodeValInput.value.trim() || 'N';
+  const child = new TNode(v);
+  child.x = selected.x + layout.spread()*0.6; child.y = selected.y + layout.yStep;
+  selected.right = child; updateSelectedInfo();
+});
+deleteBtn.addEventListener('click', ()=>{
+  if(!selected) return alert('Select node to delete.');
+  if(tree.root === selected){ if(!confirm('Delete the root and entire tree?')) return; tree.root = null; selected = null; updateSelectedInfo(); return; }
+  const parent = tree.findParent(selected);
+  if(!parent) return;
+  if(parent.left === selected) parent.left = null;
+  if(parent.right === selected) parent.right = null;
+  selected = null; updateSelectedInfo();
+});
+
+// slides playback
+function setCaption(text){ slideCaption.textContent = text; overlayNote.style.display='none'; }
+function showOverlay(msg, ms=900){ overlayNote.textContent = msg; overlayNote.style.display='block'; setTimeout(()=>overlayNote.style.display='none', ms); }
+
+function applySlide(n){
+  if(n === 0){ tree.root = null; selected = null; updateSelectedInfo(); setCaption('Slide 0 — empty'); return; }
+  tree.root = null;
+  for(let i=0;i<n;i++){
+    const s = slides[i];
+    if(s.type === 'root'){
+      tree.addRoot(s.label);
+    } else if(s.type === 'add'){
+      const p = findByLabelInTree(s.parent, tree.root);
+      if(p){
+        if(s.parent === '50' && s.label === '30') p.left = new TNode(s.label);
+        else if(s.parent === '50' && s.label === '70') p.right = new TNode(s.label);
+        else if(s.parent === '30' && s.label === '20') p.left = new TNode(s.label);
+        else if(s.parent === '30' && s.label === '40') p.right = new TNode(s.label);
+        else if(s.parent === '70' && s.label === '60') p.left = new TNode(s.label);
+        else if(s.parent === '70' && s.label === '80') p.right = new TNode(s.label);
+        else { if(!p.left) p.left = new TNode(s.label); else p.right = new TNode(s.label); }
+      }
+    }
+  }
+  setCaption(slides[n-1].caption);
+  showOverlay(`Slide ${n}: ${slides[n-1].label}`, 900);
+}
+
+function findByLabelInTree(lbl, node){
+  if(!node) return null;
+  if(node.label === lbl) return node;
+  return findByLabelInTree(lbl, node.left) || findByLabelInTree(lbl, node.right);
+}
+
+function playNextSlide(){
+  if(currentSlide < maxSlide){ currentSlide++; applySlide(currentSlide); slideSlider.value = currentSlide; } else stopPlayback();
+}
+function playPrevSlide(){ if(currentSlide > 0){ currentSlide--; applySlide(currentSlide); slideSlider.value = currentSlide; } }
+
+function startPlayback(){
+  if(playing) return;
+  playing = true; playPauseBtn.textContent = '❚❚ Pause';
+  playTimer = setInterval(()=>{
+    if(currentSlide >= maxSlide) stopPlayback();
+    else playNextSlide();
+  }, playInterval);
+}
+function stopPlayback(){ playing = false; playPauseBtn.textContent = '▶ Play'; if(playTimer){ clearInterval(playTimer); playTimer = null; } }
+
+playPauseBtn.addEventListener('click', ()=>{ if(playing) stopPlayback(); else startPlayback(); });
+stepFwdBtn.addEventListener('click', ()=>{ stopPlayback(); playNextSlide(); });
+stepBackBtn.addEventListener('click', ()=>{ stopPlayback(); playPrevSlide(); });
+slideSlider.addEventListener('input', (e)=>{ stopPlayback(); currentSlide = Number(e.target.value); applySlide(currentSlide); });
+demoBtn.addEventListener('click', ()=>{ stopPlayback(); currentSlide = 0; slideSlider.value = 0; applySlide(0); setTimeout(()=>{ startPlayback(); }, 300); });
+
+function manualChangeAdjustSlide(){ slideSlider.value = 0; currentSlide = 0; setCaption('Interactive mode'); }
+addRootBtn.addEventListener('click', manualChangeAdjustSlide);
+addLeftBtn.addEventListener('click', manualChangeAdjustSlide);
+addRightBtn.addEventListener('click', manualChangeAdjustSlide);
+deleteBtn.addEventListener('click', manualChangeAdjustSlide);
+
+// animation helpers & live counter
+function resetNodeColors(node){
+  if(!node) return;
+  node._color = null;
+  resetNodeColors(node.left); resetNodeColors(node.right);
+}
+function updateLive(text){ liveCounter.innerText = text; }
+
+// Height animation (post-order)
+async function animateHeight(node){
+  if(!node) return 0;
+  node._color = getComputedStyle(document.documentElement).getPropertyValue('--highlight') || '#f97316';
+  updateLive(`Visiting ${node.label} ...`);
+  await sleep(700);
+  let leftH = await animateHeight(node.left);
+  let rightH = await animateHeight(node.right);
+  const h = 1 + Math.max(leftH, rightH);
+  node._color = getComputedStyle(document.documentElement).getPropertyValue('--done') || '#16a34a';
+  updateLive(`${node.label} → height ${h}`);
+  await sleep(500);
+  return h;
+}
+
+// Count nodes animation
+async function animateCount(node){
+  if(!node) return 0;
+  node._color = getComputedStyle(document.documentElement).getPropertyValue('--highlight') || '#f97316';
+  updateLive(`Counting ${node.label} ...`);
+  await sleep(450);
+  let l = await animateCount(node.left);
+  let r = await animateCount(node.right);
+  const total = 1 + l + r;
+  node._color = getComputedStyle(document.documentElement).getPropertyValue('--done') || '#16a34a';
+  updateLive(`${node.label} done (subtotal ${total})`);
+  await sleep(300);
+  return total;
+}
+
+// Leaves animation
+async function animateLeaves(node){
+  if(!node) return 0;
+  if(!node.left && !node.right){
+    node._color = getComputedStyle(document.documentElement).getPropertyValue('--highlight') || '#f97316';
+    updateLive(`Leaf ${node.label}`);
+    await sleep(500);
+    node._color = getComputedStyle(document.documentElement).getPropertyValue('--done') || '#16a34a';
+    await sleep(350);
+    return 1;
+  }
+  let l = await animateLeaves(node.left);
+  let r = await animateLeaves(node.right);
+  return l + r;
+}
+
+// Degree animation
+async function animateDegree(node){
+  if(!node) return 0;
+  node._color = getComputedStyle(document.documentElement).getPropertyValue('--highlight') || '#f97316';
+  updateLive(`Checking ${node.label} ...`);
+  await sleep(400);
+  let leftD = await animateDegree(node.left);
+  let rightD = await animateDegree(node.right);
+  const deg = (node.left?1:0) + (node.right?1:0);
+  node._color = getComputedStyle(document.documentElement).getPropertyValue('--done') || '#16a34a';
+  updateLive(`${node.label} degree ${deg}`);
+  await sleep(300);
+  return Math.max(deg, leftD, rightD);
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// top shortcuts wired to simulation buttons
+heightOpBtn.addEventListener('click', ()=>{ simHeightBtn.click(); });
+countOpBtn.addEventListener('click', ()=>{ simCountBtn.click(); });
+leafOpBtn.addEventListener('click', ()=>{ simLeavesBtn.click(); });
+degreeOpBtn.addEventListener('click', ()=>{ simDegreeBtn.click(); });
+
+// simulation button handlers
+simHeightBtn.addEventListener('click', async ()=>{
+  if(!tree.root) return alert('Tree is empty.');
+  stopPlayback();
+  resetNodeColors(tree.root); updateLive('Starting height...');
+  const h = await animateHeight(tree.root);
+  updateLive(`Done — Height = ${h}`);
+  draw(); await sleep(500);
+  alert('Tree Height = ' + h);
+  resetNodeColors(tree.root); updateLive('—');
+});
+simCountBtn.addEventListener('click', async ()=>{
+  if(!tree.root) return alert('Tree is empty.');
+  stopPlayback();
+  resetNodeColors(tree.root); updateLive('Starting count...');
+  const c = await animateCount(tree.root);
+  updateLive(`Done — Total = ${c}`);
+  draw(); await sleep(400);
+  alert('Total Nodes = ' + c);
+  resetNodeColors(tree.root); updateLive('—');
+});
+simLeavesBtn.addEventListener('click', async ()=>{
+  if(!tree.root) return alert('Tree is empty.');
+  stopPlayback();
+  resetNodeColors(tree.root); updateLive('Counting leaves...');
+  const l = await animateLeaves(tree.root);
+  updateLive(`Done — Leaves = ${l}`);
+  draw(); await sleep(400);
+  alert('Leaf Nodes = ' + l);
+  resetNodeColors(tree.root); updateLive('—');
+});
+simDegreeBtn.addEventListener('click', async ()=>{
+  if(!tree.root) return alert('Tree is empty.');
+  stopPlayback();
+  resetNodeColors(tree.root); updateLive('Calculating degree...');
+  const d = await animateDegree(tree.root);
+  updateLive(`Done — Degree = ${d}`);
+  draw(); await sleep(400);
+  alert('Degree of Tree = ' + d);
+  resetNodeColors(tree.root); updateLive('—');
+});
+
+// simple demo builder
+document.getElementById('demo').addEventListener('click', ()=>{
+  stopPlayback();
+  currentSlide = 0; slideSlider.value = 0; applySlide(0);
+  setTimeout(()=> startPlayback(), 300);
+});
+
+// Initialize empty
+applySlide(0);
+setCaption('Slide 0 — empty');
+updateLive('—');
+
+</script>
+</body>
+</html>
